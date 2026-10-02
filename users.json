@@ -1,0 +1,32 @@
+[
+  {
+    "id": "u_1779155483680_qmoet2epe",
+    "name": "MW Valentino",
+    "email": "mwvalentino11@gmail.com",
+    "password": "$2b$10$B1SqY6Ysvl56ShVOyxep8.iUBzf2am9Ou9kLRNCfF0EFMixZmpNRy",
+    "profile": {
+      "jobField": "IT",
+      "experienceLevel": "Fresh Graduate",
+      "education": "S1",
+      "major": "Sistem Informasi",
+      "hardSkills": "web developer",
+      "softSkills": "adaptasi cepat",
+      "expectedSalary": "4000000",
+      "location": "Kediri",
+      "summary": "fresh graduate s1 sistem informasi dan magang 1 tahun"
+    }
+  },
+  {
+    "id": "u_1779239449086_vkq89l6p4",
+    "name": "Muhamad Wika Valentino",
+    "email": "wika.valentino2018@gmail.com",
+    "password": "$2b$10$Fg8NF0P9D2xnsfJjSeo5Au7uX35SSppiC/W3nHdC8H.4OzPaCO/V6",
+    "profile": {
+      "jobField": "Web developer",
+      "experienceLevel": "Fresh Graduate",
+      "hardSkills": "PHP, programming",
+      "softSkills": "komunikasi, kerja sama tim",
+      "summary": "Saya adalah fresh draduate s1 sistem informasi"
+    }
+  }
+]

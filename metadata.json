@@ -1,0 +1,8 @@
+{
+  "name": "Kerjamin",
+  "description": "Pelindung Karier dari Kontrak Jebakan & Loker Palsu menggunakan AI",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

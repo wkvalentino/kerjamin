@@ -1,0 +1,152 @@
+[
+  {
+    "id": "h_1779156616312_ye8x0e8b9",
+    "userId": "u_1779155483680_qmoet2epe",
+    "timestamp": "2026-05-19T02:10:16.312Z",
+    "jenis_dokumen": "File",
+    "fileName": "SURAT PERJANJIAN KONTRAK KERJA.txt",
+    "result": {
+      "skor_kecocokan": 45,
+      "skor_keamanan": 75,
+      "indikasi_bahaya": "Sedang",
+      "hasil_cocoklogi": {
+        "skill_sesuai": [
+          "Pendidikan SMK",
+          "Adaptasi cepat",
+          "Pengoperasian komputer dasar"
+        ],
+        "skill_kurang": [
+          "Relevansi bidang IT Web Developer tidak terpakai",
+          "Pengalaman administrasi perkantoran",
+          "Keahlian manajemen dokumen"
+        ]
+      },
+      "identifikasi_pelanggaran": [
+        {
+          "jenis_pelanggaran": "Upah di bawah Upah Minimum Provinsi (UMP)",
+          "penjelasan": "Gaji yang ditawarkan sebesar Rp4.500.000 untuk wilayah Jakarta berada di bawah ketetapan UMP DKI Jakarta 2024 sebesar Rp5.067.381.",
+          "pasal_dilanggar": "Pasal 88E ayat (2) UU No. 6 Tahun 2023 tentang Cipta Kerja"
+        },
+        {
+          "jenis_pelanggaran": "Ketiadaan Klausul Uang Kompensasi PKWT",
+          "penjelasan": "Kontrak tidak mencantumkan hak karyawan untuk menerima uang kompensasi pada saat berakhirnya jangka waktu PKWT (6 bulan).",
+          "pasal_dilanggar": "Pasal 15 ayat (1) PP No. 35 Tahun 2021"
+        }
+      ],
+      "rekomendasi": "Posisi Staf Administrasi tidak relevan dengan profil Anda sebagai Web Developer dan berisiko menghambat pertumbuhan karier teknis (career gap). Selain itu, gaji yang ditawarkan berada di bawah standar legal minimum untuk wilayah Jakarta. Disarankan untuk mencari lowongan Junior Web Developer atau IT Support agar sesuai dengan hard skills Anda."
+    }
+  },
+  {
+    "id": "h_1779276445243_t9qv8dzj8",
+    "userId": "u_1779155483680_qmoet2epe",
+    "timestamp": "2026-05-20T11:27:25.243Z",
+    "jenis_dokumen": "Teks",
+    "fileName": "Analisis Teks Terpadu",
+    "result": {
+      "skor_kecocokan": 10,
+      "skor_keamanan": 100,
+      "indikasi_bahaya": "Aman",
+      "hasil_cocoklogi": {
+        "skill_sesuai": [
+          "Adaptasi cepat"
+        ],
+        "skill_kurang": [
+          "Pendidikan minimal D3/S1 (User lulusan SMK)",
+          "Pengalaman kerja 2 tahun di bidang penjualan bahan bangunan",
+          "Keahlian Web Development (Tidak relevan dengan posisi Sales)",
+          "Kepemilikan SIM A",
+          "Kemampuan negosiasi dan analisis pasar konstruksi"
+        ]
+      },
+      "identifikasi_pelanggaran": [],
+      "rekomendasi": "Loker ini sangat tidak direkomendasikan karena terjadi mismatch (ketidakcocokan) total antara latar belakang pendidikan SMK IT/Web Developer Anda dengan kebutuhan posisi Sales Material Bangunan yang mensyaratkan D3/S1 dan pengalaman 2 tahun. Sebaiknya fokus mencari lowongan Junior Web Developer, IT Support, atau Staff Administrasi yang sesuai dengan kompetensi teknis Anda."
+    }
+  },
+  {
+    "id": "h_1779276885545_6kov9p1to",
+    "userId": "u_1779155483680_qmoet2epe",
+    "timestamp": "2026-05-20T11:34:45.545Z",
+    "jenis_dokumen": "Teks",
+    "fileName": "Analisis Teks Terpadu",
+    "result": {
+      "skor_kecocokan": 15,
+      "skor_keamanan": 100,
+      "indikasi_bahaya": "Aman",
+      "hasil_cocoklogi": {
+        "skill_sesuai": [
+          "Potensi kemampuan analisis dan problem solving (berdasarkan adaptasi cepat dan dasar IT)"
+        ],
+        "skill_kurang": [
+          "Pendidikan minimal D3/S1",
+          "Pengalaman kerja minimal 2 tahun di bidang penjualan bahan bangunan",
+          "Keahlian di bidang penjualan proyek konstruksi/bahan bangunan",
+          "Kemampuan komunikasi yang baik (khususnya dalam penjualan)",
+          "Kemampuan negosiasi yang baik",
+          "Kemampuan leadership yang baik",
+          "Memiliki SIM A"
+        ]
+      },
+      "identifikasi_pelanggaran": [],
+      "rekomendasi": "Lowongan pekerjaan ini sangat tidak cocok dengan profil Anda sebagai Fresh Graduate SMK di bidang IT/Web Developer. Persyaratan pendidikan, pengalaman, dan bidang keahlian yang diminta sangat berbeda dengan latar belakang Anda. Sebaiknya fokus mencari lowongan di bidang IT, khususnya Web Developer, yang sesuai dengan pengalaman dan skill yang Anda miliki."
+    }
+  },
+  {
+    "id": "h_1779277237709_yveglniem",
+    "userId": "u_1779155483680_qmoet2epe",
+    "timestamp": "2026-05-20T11:40:37.709Z",
+    "jenis_dokumen": "Teks",
+    "fileName": "Analisis Teks Terpadu",
+    "result": {
+      "skor_kecocokan": 5,
+      "skor_keamanan": 95,
+      "indikasi_bahaya": "Aman",
+      "hasil_cocoklogi": {
+        "skill_sesuai": [],
+        "skill_kurang": [
+          "Pendidikan minimal D3/S1 (profil user SMK)",
+          "Pengalaman kerja minimal 2 tahun di bidang penjualan bahan bangunan (profil user fresh graduate)",
+          "Kemampuan identifikasi peluang penjualan pada sektor proyek pembangunan",
+          "Kemampuan melakukan penjualan material bahan bangunan semen instant",
+          "Kemampuan membangun dan memelihara hubungan dengan pelanggan arsitek, kontraktor, pengembang",
+          "Kemampuan menangani keluhan pelanggan",
+          "Memiliki SIM A",
+          "Bersedia melakukan perjalanan dinas",
+          "Kemampuan komunikasi dan negosiasi",
+          "Kemampuan analisis dan problem solving (spesifik penjualan)",
+          "Kemampuan leadership"
+        ]
+      },
+      "identifikasi_pelanggaran": [],
+      "rekomendasi": "Posisi ini sangat tidak cocok dengan profil Anda sebagai fresh graduate SMK dengan keahlian web developer. Persyaratan pendidikan, pengalaman, dan jenis keterampilan yang dibutuhkan sangat berbeda dari apa yang Anda miliki. Disarankan untuk mencari lowongan pekerjaan yang lebih relevan dengan bidang IT dan keahlian web development Anda."
+    }
+  },
+  {
+    "id": "h_1779277564989_ghepp7rwa",
+    "userId": "u_1779155483680_qmoet2epe",
+    "timestamp": "2026-05-20T11:46:04.989Z",
+    "jenis_dokumen": "Teks",
+    "fileName": "Analisis Teks Terpadu",
+    "result": {
+      "skor_kecocokan": 5,
+      "skor_keamanan": 95,
+      "indikasi_bahaya": "Aman",
+      "hasil_cocoklogi": {
+        "skill_sesuai": [
+          "Mudah beradaptasi pada perubahan"
+        ],
+        "skill_kurang": [
+          "Pengalaman memimpin tim min 2 tahun",
+          "Pengalaman memimpin lebih dari 5-10 anggota tim",
+          "Pengalaman min 2 tahun di Micro Finance sebagai Manager",
+          "Kemampuan menyusun strategi sales & marketing",
+          "Disiplin Tinggi",
+          "Kekuatan komunikasi & berkolaborasi dengan tim",
+          "Semangat belajar tinggi (analisa informasi dan data)",
+          "Mampu membangun budaya coaching"
+        ]
+      },
+      "identifikasi_pelanggaran": [],
+      "rekomendasi": "Profil Anda sebagai fresh graduate S1 Sistem Informasi dengan pengalaman magang web developer tidak cocok dengan posisi Business Manager (Team Leader) ini. Posisi ini membutuhkan pengalaman manajerial minimal 2 tahun di bidang Micro Finance dan kemampuan strategi bisnis/marketing yang tidak dimiliki oleh Anda. Disarankan untuk fokus mencari lowongan di bidang IT (web developer) sesuai dengan keahlian dan pengalaman Anda. Lowongan ini sendiri terlihat aman dan menawarkan benefit yang baik, namun tidak relevan dengan profil Anda."
+    }
+  }
+]
