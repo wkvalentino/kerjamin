@@ -9,10 +9,7 @@ import * as pdf from "pdf-parse";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 import fs from "fs";
-import axios from "axios";
-import * as cheerio from "cheerio";
 
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -21,54 +18,73 @@ const app = express();
 const PORT = 3000;
 const UPLOAD_LIMIT = 5 * 1024 * 1024; // 5MB
 
-// Initialize Firebase Cloud Firestore (Supports local JSON file and Vercel ENV)
-let serviceAccount: any;
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  try {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  } catch (e) {
-    console.error("Gagal mem-parsing FIREBASE_SERVICE_ACCOUNT dari environment variable:", e);
+// ----------------------------------------------------------------
+// Initialize Firebase Cloud Firestore
+// Mendukung dua mode: ENV var (Vercel) atau file JSON lokal
+// ----------------------------------------------------------------
+let db: any = null;
+let firebaseInitError: string | null = null;
+
+try {
+  let serviceAccount: any;
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+    serviceAccount = JSON.parse(raw);
+    // Fix: Vercel kadang mengescaped \\n menjadi literal, kita normalisasi
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+    }
   }
+
+  if (!serviceAccount) {
+    const keyPath = path.join(process.cwd(), "project-vibe-coding-kerjamin-firebase-adminsdk-fbsvc-acda211b65.json");
+    if (fs.existsSync(keyPath)) {
+      serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+    }
+  }
+
+  if (serviceAccount) {
+    const firebaseApp = getApps().length === 0
+      ? initializeApp({ credential: cert(serviceAccount) })
+      : getApps()[0];
+
+    const DATABASE_ID = process.env.FIREBASE_DATABASE_ID || "ai-studio-57a39df3-2720-4c0c-a5aa-d8e33e5fa656";
+    db = getFirestore(firebaseApp, DATABASE_ID);
+    console.log("🔥 Firestore connected! Database:", DATABASE_ID);
+  } else {
+    firebaseInitError = "FIREBASE_SERVICE_ACCOUNT belum disetel.";
+    console.warn("⚠️", firebaseInitError);
+  }
+} catch (err: any) {
+  firebaseInitError = err.message;
+  console.error("❌ Firebase init error:", err.message);
 }
 
-if (!serviceAccount) {
-  const serviceAccountPath = path.join(process.cwd(), "project-vibe-coding-kerjamin-firebase-adminsdk-fbsvc-acda211b65.json");
-  if (fs.existsSync(serviceAccountPath)) {
-    serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf-8"));
-  }
+// ----------------------------------------------------------------
+// Initialize Gemini AI
+// ----------------------------------------------------------------
+let ai: any = null;
+try {
+  ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY || "",
+    httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+  });
+} catch (e: any) {
+  console.warn("Gemini init warning:", e.message);
 }
-
-const firebaseApp = getApps().length === 0
-  ? initializeApp({
-      credential: cert(serviceAccount)
-    })
-  : getApps()[0];
-
-const DATABASE_ID = process.env.FIREBASE_DATABASE_ID || "ai-studio-57a39df3-2720-4c0c-a5aa-d8e33e5fa656";
-const db = getFirestore(firebaseApp, DATABASE_ID);
-console.log("🔥 Cloud Firestore connected successfully! Database:", DATABASE_ID);
 
 const JWT_SECRET = process.env.JWT_SECRET || "kerjamin_default_secret";
 
-// Initialize Gemini
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
-});
-
 app.use(express.json());
 
+// ----------------------------------------------------------------
 // Auth Middleware
+// ----------------------------------------------------------------
 const authenticateToken = (req: any, res: any, next: any) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
   if (!token) return res.status(401).json({ error: "Unauthorized" });
-
   jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
     if (err) return res.status(403).json({ error: "Forbidden" });
     req.user = user;
@@ -76,28 +92,45 @@ const authenticateToken = (req: any, res: any, next: any) => {
   });
 };
 
-// --- AUTH ROUTES (Cloud Firestore) ---
-app.post("/api/register", async (req, res) => {
+// ----------------------------------------------------------------
+// API Router (semua route /api/*)
+// ----------------------------------------------------------------
+const apiRouter = express.Router();
+
+// Guard: semua route selain /health akan dicek koneksi DB
+apiRouter.use((req: any, res: any, next: any) => {
+  if (req.path === "/health") return next();
+  if (!db) {
+    return res.status(503).json({
+      error: firebaseInitError || "Firestore tidak terhubung. Tambahkan FIREBASE_SERVICE_ACCOUNT di Vercel."
+    });
+  }
+  next();
+});
+
+// Health check
+apiRouter.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    database: db ? "connected" : "disconnected",
+    gemini: !!ai,
+    error: firebaseInitError
+  });
+});
+
+// Register
+apiRouter.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    
-    // Cek apakah email sudah terdaftar di Firestore
     const userSnap = await db.collection("users").where("email", "==", email).get();
-    if (!userSnap.empty) {
-      return res.status(400).json({ error: "Email sudah terdaftar" });
-    }
+    if (!userSnap.empty) return res.status(400).json({ error: "Email sudah terdaftar" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = { 
-      id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
-      name, 
-      email, 
-      password: hashedPassword,
-      profile: null
+    const newUser = {
+      id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name, email, password: hashedPassword, profile: null
     };
-
     await db.collection("users").doc(newUser.id).set(newUser);
-
     const token = jwt.sign({ id: newUser.id, name: newUser.name }, JWT_SECRET);
     res.json({ token, user: { id: newUser.id, name: newUser.name, email: newUser.email, profile: newUser.profile } });
   } catch (err: any) {
@@ -106,42 +139,17 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-app.post("/api/save-profile", authenticateToken, async (req: any, res) => {
-  try {
-    console.log("Saving profile to Firestore for user:", req.user.id);
-    const userRef = db.collection("users").doc(String(req.user.id));
-    const userDoc = await userRef.get();
-    
-    if (!userDoc.exists) {
-      console.error("User not found in Firestore:", req.user.id);
-      return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir. Silakan login ulang." });
-    }
-
-    await userRef.update({ profile: req.body });
-    const updatedUser = (await userRef.get()).data();
-    console.log("Profile updated successfully in Firestore for:", updatedUser?.email);
-    res.json({ message: "Profil berhasil disimpan ke Cloud Firestore", profile: updatedUser?.profile });
-  } catch (err: any) {
-    console.error("Save Profile Error:", err);
-    res.status(500).json({ error: "Gagal menyimpan profil ke database" });
-  }
-});
-
-app.post("/api/login", async (req, res) => {
+// Login
+apiRouter.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     const userSnap = await db.collection("users").where("email", "==", email).get();
-
-    if (userSnap.empty) {
-      return res.status(400).json({ error: "Email atau password salah" });
-    }
+    if (userSnap.empty) return res.status(400).json({ error: "Email atau password salah" });
 
     const user = userSnap.docs[0].data();
-
     if (!(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ error: "Email atau password salah" });
     }
-
     const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, profile: user.profile } });
   } catch (err: any) {
@@ -150,30 +158,45 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// --- HISTORY ROUTE (Cloud Firestore) ---
-app.get("/api/history", authenticateToken, async (req: any, res) => {
+// Save Profile
+apiRouter.post("/save-profile", authenticateToken, async (req: any, res) => {
   try {
-    const historySnap = await db.collection("history").where("userId", "==", req.user.id).get();
-    const userHistory = historySnap.docs.map(doc => doc.data());
-    // Urutkan berdasarkan waktu terbaru
-    userHistory.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    res.json(userHistory);
+    const userRef = db.collection("users").doc(String(req.user.id));
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir. Silakan login ulang." });
+    }
+    await userRef.update({ profile: req.body });
+    const updatedUser = (await userRef.get()).data();
+    console.log("Profile updated for:", updatedUser?.email);
+    res.json({ message: "Profil berhasil disimpan", profile: updatedUser?.profile });
+  } catch (err: any) {
+    console.error("Save Profile Error:", err);
+    res.status(500).json({ error: "Gagal menyimpan profil ke database" });
+  }
+});
+
+// Get History
+apiRouter.get("/history", authenticateToken, async (req: any, res) => {
+  try {
+    const snap = await db.collection("history").where("userId", "==", req.user.id).get();
+    const history = snap.docs.map((doc: any) => doc.data());
+    history.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    res.json(history);
   } catch (err: any) {
     console.error("Get History Error:", err);
     res.status(500).json({ error: "Gagal memuat riwayat dari database" });
   }
 });
 
-app.delete("/api/history/:id", authenticateToken, async (req: any, res) => {
+// Delete History
+apiRouter.delete("/history/:id", authenticateToken, async (req: any, res) => {
   try {
-    const { id } = req.params;
-    const historyRef = db.collection("history").doc(id);
+    const historyRef = db.collection("history").doc(req.params.id);
     const historyDoc = await historyRef.get();
-
     if (!historyDoc.exists || historyDoc.data()?.userId !== req.user.id) {
       return res.status(404).json({ error: "Riwayat tidak ditemukan." });
     }
-
     await historyRef.delete();
     res.json({ success: true });
   } catch (err: any) {
@@ -182,13 +205,11 @@ app.delete("/api/history/:id", authenticateToken, async (req: any, res) => {
   }
 });
 
-
-// --- ANALYSIS LOGIC ---
+// ----------------------------------------------------------------
+// Analysis Logic
+// ----------------------------------------------------------------
 const upload = multer({ limits: { fileSize: UPLOAD_LIMIT } });
 
-/**
- * Helper to call Gemini AI with retry and exponential backoff
- */
 async function callAIWithRetry(modelRef: any, params: any, retries = 3, initialDelay = 2000) {
   let delay = initialDelay;
   for (let i = 0; i < retries; i++) {
@@ -196,11 +217,10 @@ async function callAIWithRetry(modelRef: any, params: any, retries = 3, initialD
       return await modelRef.generateContent(params);
     } catch (error: any) {
       const is503 = error.message?.includes("503") || error.status === 503 || (error.response?.status === 503);
-      
       if (is503 && i < retries - 1) {
-        console.warn(`Gemini 503 detected. Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`);
+        console.warn(`Gemini 503. Retrying in ${delay / 1000}s... (${i + 1}/${retries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
+        delay *= 2;
         continue;
       }
       throw error;
@@ -208,43 +228,30 @@ async function callAIWithRetry(modelRef: any, params: any, retries = 3, initialD
   }
 }
 
-interface AnalysisTaskResult {
-  skor_kecocokan: number;
-  skor_keamanan: number;
-  indikasi_bahaya: string;
-  hasil_cocoklogi: {
-    skill_sesuai: string[];
-    skill_kurang: string[];
-  };
-  identifikasi_pelanggaran: {
-    jenis_pelanggaran: string;
-    penjelasan: string;
-    pasal_dilanggar: string;
-  }[];
-  rekomendasi: string;
-}
-
-app.post("/api/analyze-document", authenticateToken, upload.single('file'), async (req: any, res) => {
+apiRouter.post("/analyze-document", authenticateToken, upload.single("file"), async (req: any, res) => {
   try {
+    if (!ai) return res.status(503).json({ error: "Gemini AI tidak tersedia. Pastikan GEMINI_API_KEY disetel." });
+
     const userDoc = await db.collection("users").doc(String(req.user.id)).get();
     if (!userDoc.exists || !userDoc.data()?.profile) {
       return res.status(400).json({ error: "Lengkapi profil Anda terlebih dahulu." });
     }
 
     const profile = userDoc.data()?.profile;
-
     let textToAnalyze = req.body.text || "";
 
     if (req.file) {
-      if (req.file.mimetype === 'application/pdf') {
+      if (req.file.mimetype === "application/pdf") {
         const pdfParser = (pdf as any).default || pdf;
         const data = await pdfParser(req.file.buffer);
         textToAnalyze = data.text;
-      } else { textToAnalyze = req.file.buffer.toString('utf-8'); }
+      } else {
+        textToAnalyze = req.file.buffer.toString("utf-8");
+      }
     }
 
     if (!textToAnalyze || textToAnalyze.trim().length < 10) {
-       return res.status(400).json({ error: "Konten terlalu pendek." });
+      return res.status(400).json({ error: "Konten terlalu pendek." });
     }
 
     const systemPrompt = `Anda adalah Senior Full-Stack Developer, HR Recruiter, dan Career Coach Profesional dengan keahlian Hukum Ketenagakerjaan Indonesia.
@@ -309,8 +316,7 @@ WAJIB mengembalikan respons dalam format JSON murni.`;
     });
 
     const analysisResult = JSON.parse(response.text || "{}");
-    
-    // Save to Cloud Firestore
+
     const historyItem = {
       id: `h_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       userId: req.user.id,
@@ -320,31 +326,37 @@ WAJIB mengembalikan respons dalam format JSON murni.`;
       result: analysisResult
     };
     await db.collection("history").doc(historyItem.id).set(historyItem);
-    console.log("Analysis saved to Firestore history for user:", req.user.id);
 
     res.json(analysisResult);
   } catch (error: any) {
-    console.error("Analysis Error Details:", error);
-    res.status(500).json({ 
-      error: "Gagal memproses analisis AI multitasking.",
-      details: error.message 
+    console.error("Analysis Error:", error);
+    res.status(500).json({
+      error: "Gagal memproses analisis AI.",
+      details: error.message
     });
   }
 });
 
-// Vite Middleware & Static Serving
+// Mount API Router
+app.use("/api", apiRouter);
+
+// ----------------------------------------------------------------
+// Vite Middleware (dev) & Static Serving (production)
+// ----------------------------------------------------------------
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    // Dynamic import: vite hanya tersedia di dev (devDependency)
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
@@ -353,7 +365,7 @@ async function startServer() {
   });
 }
 
-// Jalankan server lokal jika bukan di lingkungan Vercel serverless
+// Jalankan server lokal jika bukan di Vercel
 if (!process.env.VERCEL) {
   startServer();
 }
