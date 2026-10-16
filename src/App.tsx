@@ -160,7 +160,8 @@ export default function App() {
       const response = await fetch("/api/history", {
         headers: { "Authorization": `Bearer ${authToken}` },
       });
-      const data = await response.json();
+      const ct = response.headers.get("content-type") || "";
+      const data = ct.includes("application/json") ? await response.json() : [];
       if (response.status === 401 || response.status === 403 || response.status === 404) {
         handleLogout();
         return;
@@ -215,7 +216,10 @@ export default function App() {
         },
         body: JSON.stringify(profileData),
       });
-      const data = await response.json();
+      const ct2 = response.headers.get("content-type") || "";
+      const data = ct2.includes("application/json")
+        ? await response.json()
+        : { error: `Server error (${response.status})` };
 
       if (response.status === 404 && data.error?.includes("Akun tidak ditemukan")) {
         // Session broken (memory wiped or mismatch), force logout
@@ -275,7 +279,10 @@ export default function App() {
         body: JSON.stringify(data),
       });
 
-      const resData = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const resData = contentType.includes("application/json")
+        ? await response.json()
+        : { error: `Server error (${response.status}): ${await response.text().then(t => t.substring(0, 100))}` };
       if (!response.ok) throw new Error(resData.error || "Terjadi kesalahan");
 
       sessionStorage.setItem("kerjamin_token", resData.token);
@@ -317,7 +324,10 @@ export default function App() {
         body: formData,
       });
 
-      const data = await response.json();
+      const ct3 = response.headers.get("content-type") || "";
+      const data = ct3.includes("application/json")
+        ? await response.json()
+        : { error: `Server error (${response.status}): Cek env vars di Vercel Dashboard` };
       if (!response.ok) throw new Error(data.error || "Gagal menganalisis");
 
       setResult(data);
