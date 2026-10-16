@@ -5,7 +5,7 @@ dotenv.config();
 import express from "express";
 import path from "path";
 import multer from "multer";
-import * as pdf from "pdf-parse";
+// pdf-parse diimport secara dynamic di dalam route handler (hindari crash serverless)
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -242,7 +242,9 @@ apiRouter.post("/analyze-document", authenticateToken, upload.single("file"), as
 
     if (req.file) {
       if (req.file.mimetype === "application/pdf") {
-        const pdfParser = (pdf as any).default || pdf;
+        // Dynamic import: pdf-parse tidak boleh diimport di top-level (crash serverless)
+        const pdfModule = await import("pdf-parse");
+        const pdfParser = (pdfModule as any).default || pdfModule;
         const data = await pdfParser(req.file.buffer);
         textToAnalyze = data.text;
       } else {
