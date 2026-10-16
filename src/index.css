@@ -14,14 +14,20 @@
 }
 
 @keyframes marquee-scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
 }
 
 .animate-marquee {
-  animation: marquee-scroll 30s linear infinite;
+  display: flex;
+  flex-shrink: 0;
+  animation: marquee-scroll 45s linear infinite;
 }
 
-.animate-marquee:hover {
+.marquee-container:hover .animate-marquee {
   animation-play-state: paused;
 }

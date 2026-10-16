@@ -673,7 +673,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* Marquee Ticker - hanya di landing */}
+          {/* Marquee Ticker - tepat di bawah section utama */}
           {view === "landing" && <MarqueeTicker />}
 
           {view === "landing" && <CaraKerjaSection />}
@@ -1159,31 +1159,51 @@ function CaraKerjaSection() {
   );
 }
 
-const marqueeItems = [
-  { status: "✓ AMAN", color: "bg-emerald-100 text-emerald-700 border-emerald-200", text: "Loker Junior Web Developer di Jakarta — Terverifikasi" },
-  { status: "🚨 DICEGAH", color: "bg-red-100 text-red-700 border-red-200", text: "Penipuan Berkedok Undangan Interview Travel Fiktif" },
-  { status: "⚠️ DIREVISI", color: "bg-amber-100 text-amber-700 border-amber-200", text: "Kontrak Kerja dengan Klausul Denda Resign Rp50 Juta" },
-  { status: "✓ AMAN", color: "bg-emerald-100 text-emerald-700 border-emerald-200", text: "Lowongan Data Analyst Remote — PT Teknologi Nusantara" },
-  { status: "🚨 DICEGAH", color: "bg-red-100 text-red-700 border-red-200", text: "Modus Lowongan Palsu Minta Transfer Biaya Pelatihan" },
-  { status: "⚠️ DIREVISI", color: "bg-amber-100 text-amber-700 border-amber-200", text: "Penahanan Ijazah 3 Tahun dalam Kontrak Outsourcing" },
-  { status: "✓ AMAN", color: "bg-emerald-100 text-emerald-700 border-emerald-200", text: "Internship UI/UX Designer — Startup Fintech Resmi OJK" },
-  { status: "🚨 DICEGAH", color: "bg-red-100 text-red-700 border-red-200", text: "Phishing via Email Palsu Mengatasnamakan HRD Perusahaan Besar" },
+const tickerItems = [
+  { status: "✓ AMAN", color: "bg-emerald-50 text-emerald-700 border-emerald-200", text: "Loker Junior Web Developer di Jakarta — Terverifikasi Resmi" },
+  { status: "🚨 DICEGAH", color: "bg-red-50 text-red-700 border-red-200", text: "Modus Penipuan Undangan Interview Travel Fiktif Luar Kota" },
+  { status: "⚠️ DIREVISI", color: "bg-amber-50 text-amber-700 border-amber-200", text: "Klausul Denda Resign Rp50 Juta pada PKWT Tidak Sah" },
+  { status: "🛡️ LEGAL", color: "bg-blue-50 text-blue-700 border-blue-200", text: "Kontrak Kerja Remote PT Teknologi Nusantara — Standar Kemnaker" },
+  { status: "🚨 DICEGAH", color: "bg-red-50 text-red-700 border-red-200", text: "Lowongan Palsu Admin Medsos Minta Transfer Deposit Pelatihan" },
+  { status: "⚠️ DIREVISI", color: "bg-amber-50 text-amber-700 border-amber-200", text: "Penahanan Ijazah 3 Tahun Tanpa Kompensasi Asuransi" },
+  { status: "✓ AMAN", color: "bg-emerald-50 text-emerald-700 border-emerald-200", text: "Internship UI/UX Designer — Perusahaan Fintech Terdaftar OJK" },
 ];
 
 function MarqueeTicker() {
   return (
-    <section className="py-6 overflow-hidden border-y border-slate-100 bg-slate-50/60">
-      <div className="flex animate-marquee w-max">
-        {[...marqueeItems, ...marqueeItems].map((item, i) => (
-          <div key={i} className="flex items-center gap-3 mx-4 shrink-0">
-            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${item.color}`}>
-              {item.status}
-            </span>
-            <span className="text-sm font-semibold text-slate-600 whitespace-nowrap">{item.text}</span>
-            <span className="text-slate-300 mx-2">→</span>
-          </div>
-        ))}
+    <section className="relative overflow-hidden border-y border-slate-100 bg-slate-50/80 py-4 my-2">
+      {/* Left & Right Gradient Fade Masks */}
+      <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-24 bg-gradient-to-r from-[#FDFCFB] to-transparent" />
+      <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-24 bg-gradient-to-l from-[#FDFCFB] to-transparent" />
+
+      <div className="marquee-container flex overflow-hidden">
+        {/* Track 1 */}
+        <div className="animate-marquee shrink-0 flex items-center">
+          {tickerItems.map((item, i) => (
+            <div key={`track1-${i}`} className="flex items-center gap-3 mx-4 shrink-0">
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${item.color}`}>
+                {item.status}
+              </span>
+              <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">{item.text}</span>
+              <span className="text-slate-300 mx-2 select-none">•</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Track 2 (Seamless loop copy) */}
+        <div className="animate-marquee shrink-0 flex items-center" aria-hidden="true">
+          {tickerItems.map((item, i) => (
+            <div key={`track2-${i}`} className="flex items-center gap-3 mx-4 shrink-0">
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${item.color}`}>
+                {item.status}
+              </span>
+              <span className="text-sm font-semibold text-slate-700 whitespace-nowrap">{item.text}</span>
+              <span className="text-slate-300 mx-2 select-none">•</span>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
+

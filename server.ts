@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
+dotenv.config();
 
 import express from "express";
 import path from "path";
@@ -13,31 +14,39 @@ import fs from "fs";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
+import { getApps, initializeApp, cert } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+
 const app = express();
 const PORT = 3000;
 const UPLOAD_LIMIT = 5 * 1024 * 1024; // 5MB
 
-// Simple in-persistent "database" for Prototype
-const USERS_FILE = path.join(process.cwd(), "users.json");
-const HISTORY_FILE = path.join(process.cwd(), "history.json");
-
-let users: any[] = [];
-let analysisHistory: any[] = [];
-
-// Load data on startup
-try {
-  if (fs.existsSync(USERS_FILE)) {
-    users = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
+// Initialize Firebase Cloud Firestore (Supports local JSON file and Vercel ENV)
+let serviceAccount: any;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } catch (e) {
+    console.error("Gagal mem-parsing FIREBASE_SERVICE_ACCOUNT dari environment variable:", e);
   }
-  if (fs.existsSync(HISTORY_FILE)) {
-    analysisHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf-8"));
-  }
-} catch (e) {
-  console.error("Error loading data files:", e);
 }
 
-const saveUsers = () => fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-const saveHistory = () => fs.writeFileSync(HISTORY_FILE, JSON.stringify(analysisHistory, null, 2));
+if (!serviceAccount) {
+  const serviceAccountPath = path.join(process.cwd(), "project-vibe-coding-kerjamin-firebase-adminsdk-fbsvc-acda211b65.json");
+  if (fs.existsSync(serviceAccountPath)) {
+    serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf-8"));
+  }
+}
+
+const firebaseApp = getApps().length === 0
+  ? initializeApp({
+      credential: cert(serviceAccount)
+    })
+  : getApps()[0];
+
+const DATABASE_ID = process.env.FIREBASE_DATABASE_ID || "ai-studio-57a39df3-2720-4c0c-a5aa-d8e33e5fa656";
+const db = getFirestore(firebaseApp, DATABASE_ID);
+console.log("🔥 Cloud Firestore connected successfully! Database:", DATABASE_ID);
 
 const JWT_SECRET = process.env.JWT_SECRET || "kerjamin_default_secret";
 
@@ -67,69 +76,110 @@ const authenticateToken = (req: any, res: any, next: any) => {
   });
 };
 
-// --- AUTH ROUTES ---
+// --- AUTH ROUTES (Cloud Firestore) ---
 app.post("/api/register", async (req, res) => {
-  const { name, email, password } = req.body;
-  
-  if (users.find(u => u.email === email)) {
-    return res.status(400).json({ error: "Email sudah terdaftar" });
+  try {
+    const { name, email, password } = req.body;
+    
+    // Cek apakah email sudah terdaftar di Firestore
+    const userSnap = await db.collection("users").where("email", "==", email).get();
+    if (!userSnap.empty) {
+      return res.status(400).json({ error: "Email sudah terdaftar" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = { 
+      id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
+      name, 
+      email, 
+      password: hashedPassword,
+      profile: null
+    };
+
+    await db.collection("users").doc(newUser.id).set(newUser);
+
+    const token = jwt.sign({ id: newUser.id, name: newUser.name }, JWT_SECRET);
+    res.json({ token, user: { id: newUser.id, name: newUser.name, email: newUser.email, profile: newUser.profile } });
+  } catch (err: any) {
+    console.error("Register Error:", err);
+    res.status(500).json({ error: "Gagal mendaftar akun ke database" });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const newUser = { 
-    id: `u_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
-    name, 
-    email, 
-    password: hashedPassword,
-    profile: null // Akan diisi di form profil setelah login pertama
-  };
-  users.push(newUser);
-  saveUsers();
-
-  const token = jwt.sign({ id: newUser.id, name: newUser.name }, JWT_SECRET);
-  res.json({ token, user: { id: newUser.id, name: newUser.name, email: newUser.email, profile: newUser.profile } });
 });
 
-app.post("/api/save-profile", authenticateToken, (req: any, res) => {
-  console.log("Saving profile for user:", req.user.id);
-  const userIndex = users.findIndex(u => String(u.id) === String(req.user.id));
-  
-  if (userIndex === -1) {
-    console.error("User not found in memory database:", req.user.id);
-    return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir. Silakan login ulang." });
-  }
+app.post("/api/save-profile", authenticateToken, async (req: any, res) => {
+  try {
+    console.log("Saving profile to Firestore for user:", req.user.id);
+    const userRef = db.collection("users").doc(String(req.user.id));
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      console.error("User not found in Firestore:", req.user.id);
+      return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir. Silakan login ulang." });
+    }
 
-  users[userIndex].profile = req.body;
-  saveUsers();
-  console.log("Profile updated successfully for:", users[userIndex].email);
-  res.json({ message: "Profil berhasil disimpan", profile: users[userIndex].profile });
+    await userRef.update({ profile: req.body });
+    const updatedUser = (await userRef.get()).data();
+    console.log("Profile updated successfully in Firestore for:", updatedUser?.email);
+    res.json({ message: "Profil berhasil disimpan ke Cloud Firestore", profile: updatedUser?.profile });
+  } catch (err: any) {
+    console.error("Save Profile Error:", err);
+    res.status(500).json({ error: "Gagal menyimpan profil ke database" });
+  }
 });
 
 app.post("/api/login", async (req, res) => {
-  const { email, password } = req.body;
-  const user = users.find(u => u.email === email);
+  try {
+    const { email, password } = req.body;
+    const userSnap = await db.collection("users").where("email", "==", email).get();
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(400).json({ error: "Email atau password salah" });
+    if (userSnap.empty) {
+      return res.status(400).json({ error: "Email atau password salah" });
+    }
+
+    const user = userSnap.docs[0].data();
+
+    if (!(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ error: "Email atau password salah" });
+    }
+
+    const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET);
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, profile: user.profile } });
+  } catch (err: any) {
+    console.error("Login Error:", err);
+    res.status(500).json({ error: "Gagal login ke database" });
   }
-
-  const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET);
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, profile: user.profile } });
 });
 
-// --- HISTORY ROUTE ---
-app.get("/api/history", authenticateToken, (req: any, res) => {
-  const userHistory = analysisHistory.filter(h => h.userId === req.user.id);
-  res.json(userHistory);
+// --- HISTORY ROUTE (Cloud Firestore) ---
+app.get("/api/history", authenticateToken, async (req: any, res) => {
+  try {
+    const historySnap = await db.collection("history").where("userId", "==", req.user.id).get();
+    const userHistory = historySnap.docs.map(doc => doc.data());
+    // Urutkan berdasarkan waktu terbaru
+    userHistory.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    res.json(userHistory);
+  } catch (err: any) {
+    console.error("Get History Error:", err);
+    res.status(500).json({ error: "Gagal memuat riwayat dari database" });
+  }
 });
 
-app.delete("/api/history/:id", authenticateToken, (req: any, res) => {
-  const { id } = req.params;
-  const index = analysisHistory.findIndex(h => h.id === id && h.userId === req.user.id);
-  if (index === -1) return res.status(404).json({ error: "Riwayat tidak ditemukan." });
-  analysisHistory.splice(index, 1);
-  saveHistory();
-  res.json({ success: true });
+app.delete("/api/history/:id", authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const historyRef = db.collection("history").doc(id);
+    const historyDoc = await historyRef.get();
+
+    if (!historyDoc.exists || historyDoc.data()?.userId !== req.user.id) {
+      return res.status(404).json({ error: "Riwayat tidak ditemukan." });
+    }
+
+    await historyRef.delete();
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Delete History Error:", err);
+    res.status(500).json({ error: "Gagal menghapus riwayat dari database" });
+  }
 });
 
 
@@ -176,12 +226,12 @@ interface AnalysisTaskResult {
 
 app.post("/api/analyze-document", authenticateToken, upload.single('file'), async (req: any, res) => {
   try {
-    const userAccount = users.find(u => u.id === req.user.id);
-    if (!userAccount || !userAccount.profile) {
+    const userDoc = await db.collection("users").doc(String(req.user.id)).get();
+    if (!userDoc.exists || !userDoc.data()?.profile) {
       return res.status(400).json({ error: "Lengkapi profil Anda terlebih dahulu." });
     }
 
-    const { profile } = userAccount;
+    const profile = userDoc.data()?.profile;
 
     let textToAnalyze = req.body.text || "";
 
@@ -260,16 +310,17 @@ WAJIB mengembalikan respons dalam format JSON murni.`;
 
     const analysisResult = JSON.parse(response.text || "{}");
     
-    // Save to history
-    analysisHistory.push({
+    // Save to Cloud Firestore
+    const historyItem = {
       id: `h_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       userId: req.user.id,
       timestamp: new Date().toISOString(),
       jenis_dokumen: req.file ? "File" : "Teks",
       fileName: req.file ? req.file.originalname : "Analisis Teks Terpadu",
       result: analysisResult
-    });
-    saveHistory();
+    };
+    await db.collection("history").doc(historyItem.id).set(historyItem);
+    console.log("Analysis saved to Firestore history for user:", req.user.id);
 
     res.json(analysisResult);
   } catch (error: any) {
@@ -302,4 +353,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Jalankan server lokal jika bukan di lingkungan Vercel serverless
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
