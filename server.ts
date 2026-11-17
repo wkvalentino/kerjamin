@@ -97,17 +97,6 @@ const authenticateToken = (req: any, res: any, next: any) => {
 // ----------------------------------------------------------------
 const apiRouter = express.Router();
 
-// Guard: semua route selain /health akan dicek koneksi DB
-apiRouter.use((req: any, res: any, next: any) => {
-  if (req.path === "/health") return next();
-  if (!db) {
-    return res.status(503).json({
-      error: firebaseInitError || "Firestore tidak terhubung. Tambahkan FIREBASE_SERVICE_ACCOUNT di Vercel."
-    });
-  }
-  next();
-});
-
 // Health check
 apiRouter.get("/health", (_req, res) => {
   res.json({
@@ -118,8 +107,9 @@ apiRouter.get("/health", (_req, res) => {
   });
 });
 
-// Register
+// Register (opsional)
 apiRouter.post("/register", async (req, res) => {
+  if (!db) return res.status(503).json({ error: firebaseInitError || "Database tidak terhubung." });
   try {
     const { name, email, password } = req.body;
     const userSnap = await db.collection("users").where("email", "==", email).get();
@@ -139,8 +129,9 @@ apiRouter.post("/register", async (req, res) => {
   }
 });
 
-// Login
+// Login (opsional)
 apiRouter.post("/login", async (req, res) => {
+  if (!db) return res.status(503).json({ error: firebaseInitError || "Database tidak terhubung." });
   try {
     const { email, password } = req.body;
     const userSnap = await db.collection("users").where("email", "==", email).get();
@@ -158,17 +149,17 @@ apiRouter.post("/login", async (req, res) => {
   }
 });
 
-// Save Profile
+// Save Profile (opsional jika menggunakan akun)
 apiRouter.post("/save-profile", authenticateToken, async (req: any, res) => {
+  if (!db) return res.json({ message: "Profil disimpan secara lokal", profile: req.body });
   try {
     const userRef = db.collection("users").doc(String(req.user.id));
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
-      return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir. Silakan login ulang." });
+      return res.status(404).json({ error: "Akun tidak ditemukan atau sesi telah berakhir." });
     }
     await userRef.update({ profile: req.body });
     const updatedUser = (await userRef.get()).data();
-    console.log("Profile updated for:", updatedUser?.email);
     res.json({ message: "Profil berhasil disimpan", profile: updatedUser?.profile });
   } catch (err: any) {
     console.error("Save Profile Error:", err);
@@ -176,25 +167,53 @@ apiRouter.post("/save-profile", authenticateToken, async (req: any, res) => {
   }
 });
 
-// Get History
-apiRouter.get("/history", authenticateToken, async (req: any, res) => {
+// Get History (mendukung guestId tanpa login maupun userId)
+apiRouter.get("/history", async (req: any, res) => {
+  if (!db) return res.json([]);
   try {
-    const snap = await db.collection("history").where("userId", "==", req.user.id).get();
+    let ownerId = req.query.guestId ? String(req.query.guestId) : null;
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        if (decoded?.id) ownerId = decoded.id;
+      } catch {
+        // Abaikan token tidak valid untuk mode tamu
+      }
+    }
+    if (!ownerId) return res.json([]);
+
+    const snap = await db.collection("history").where("userId", "==", ownerId).get();
     const history = snap.docs.map((doc: any) => doc.data());
     history.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     res.json(history);
   } catch (err: any) {
     console.error("Get History Error:", err);
-    res.status(500).json({ error: "Gagal memuat riwayat dari database" });
+    res.json([]);
   }
 });
 
-// Delete History
-apiRouter.delete("/history/:id", authenticateToken, async (req: any, res) => {
+// Delete History (mendukung guestId tanpa login maupun userId)
+apiRouter.delete("/history/:id", async (req: any, res) => {
+  if (!db) return res.json({ success: true });
   try {
+    let ownerId = req.query.guestId ? String(req.query.guestId) : null;
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        if (decoded?.id) ownerId = decoded.id;
+      } catch {
+        // Abaikan token tidak valid
+      }
+    }
+    if (!ownerId) return res.status(400).json({ error: "Identitas sesi tidak ditemukan." });
+
     const historyRef = db.collection("history").doc(req.params.id);
     const historyDoc = await historyRef.get();
-    if (!historyDoc.exists || historyDoc.data()?.userId !== req.user.id) {
+    if (!historyDoc.exists || historyDoc.data()?.userId !== ownerId) {
       return res.status(404).json({ error: "Riwayat tidak ditemukan." });
     }
     await historyRef.delete();
@@ -228,16 +247,43 @@ async function callAIWithRetry(modelRef: any, params: any, retries = 3, initialD
   }
 }
 
-apiRouter.post("/analyze-document", authenticateToken, upload.single("file"), async (req: any, res) => {
+apiRouter.post("/analyze-document", upload.single("file"), async (req: any, res) => {
   try {
-    if (!ai) return res.status(503).json({ error: "Gemini AI tidak tersedia. Pastikan GEMINI_API_KEY disetel." });
-
-    const userDoc = await db.collection("users").doc(String(req.user.id)).get();
-    if (!userDoc.exists || !userDoc.data()?.profile) {
-      return res.status(400).json({ error: "Lengkapi profil Anda terlebih dahulu." });
+    if (!process.env.GEMINI_API_KEY || !ai) {
+      return res.status(503).json({ error: "Gemini AI tidak tersedia. Pastikan GEMINI_API_KEY disetel." });
     }
 
-    const profile = userDoc.data()?.profile;
+    // Parse optional guest profile from request body
+    let profile: any = null;
+    if (req.body.profile) {
+      try {
+        profile = typeof req.body.profile === "string" ? JSON.parse(req.body.profile) : req.body.profile;
+      } catch {
+        profile = null;
+      }
+    }
+
+    // Optional ownerId (guestId or authenticated user)
+    let ownerId = req.body.guestId ? String(req.body.guestId) : `guest_${Date.now()}`;
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        if (decoded?.id) {
+          ownerId = decoded.id;
+          if (!profile && db) {
+            const userDoc = await db.collection("users").doc(String(decoded.id)).get();
+            if (userDoc.exists && userDoc.data()?.profile) {
+              profile = userDoc.data()?.profile;
+            }
+          }
+        }
+      } catch {
+        // Tetap izinkan analisis sebagai tamu
+      }
+    }
+
     let textToAnalyze = req.body.text || "";
 
     if (req.file) {
@@ -253,26 +299,33 @@ apiRouter.post("/analyze-document", authenticateToken, upload.single("file"), as
     }
 
     if (!textToAnalyze || textToAnalyze.trim().length < 10) {
-      return res.status(400).json({ error: "Konten terlalu pendek." });
+      return res.status(400).json({ error: "Konten terlalu pendek (minimal 10 karakter)." });
     }
+
+    const hasProfile = profile && (profile.jobField || profile.hardSkills || profile.summary);
+    const profileSection = hasProfile
+      ? `PROFIL USER:
+- Bidang: ${profile.jobField || "-"}
+- Pendidikan: ${profile.education || "-"} (Jurusan: ${profile.major || "-"})
+- Pengalaman: ${profile.experienceLevel || "-"}
+- Hard Skills: ${profile.hardSkills || "-"}
+- Soft Skills: ${profile.softSkills || "-"}
+- Ekspektasi Gaji: Rp${profile.expectedSalary || "-"}
+- Preferensi Lokasi: ${profile.location || "-"}
+- Ringkasan & Sertifikasi: ${profile.summary || "-"}`
+      : `PROFIL USER:
+- Pengguna belum mengisi profil karier detail (Mode Tamu Langsung).
+- Untuk bagian ANALISIS KECOCOKAN, identifikasi keahlian utama yang dibutuhkan oleh lowongan/dokumen pada 'skill_sesuai' (keterampilan umum/standar) dan keahlian spesifik/lanjutan yang perlu disiapkan kandidat pada 'skill_kurang', serta berikan estimasi skor_kecocokan yang objektif berdasarkan kejelasan kualifikasi posisi.`;
 
     const systemPrompt = `Anda adalah Senior Full-Stack Developer, HR Recruiter, dan Career Coach Profesional dengan keahlian Hukum Ketenagakerjaan Indonesia.
 Tugas Anda adalah melakukan MULTITASKING ANALYSIS pada dokumen (Loker/Kontrak) yang diberikan.
 
-PROFIL USER:
-- Bidang: ${profile.jobField}
-- Pendidikan: ${profile.education} (Jurusan: ${profile.major})
-- Pengalaman: ${profile.experienceLevel}
-- Hard Skills: ${profile.hardSkills}
-- Soft Skills: ${profile.softSkills}
-- Ekspektasi Gaji: Rp${profile.expectedSalary}
-- Preferensi Lokasi: ${profile.location}
-- Ringkasan & Sertifikasi: ${profile.summary}
+${profileSection}
 
 INSTRUKSI ANALISIS:
-1. ANALISIS KECOCOKAN: Bandingkan profil user dengan kebutuhan di dokumen. Berikan skor_kecocokan (0-100) berdasarkan relevansi skill dan pengalaman.
-2. ANALISIS KEAMANAN: Identifikasi potensi penipuan (Scam), Loker Palsu, Phishing, atau pasal kontrak kerja jebakan yang melanggar UU Ketenagakerjaan Indonesia.
-   - Periksa apakah ada penahanan ijazah, penalti ganti rugi yang tidak wajar, atau indikasi phishing.
+1. ANALISIS KECOCOKAN: Evaluasi kesesuaian kualifikasi/skill pada dokumen${hasProfile ? " dengan profil user" : " untuk kandidat umum"}. Berikan skor_kecocokan (0-100).
+2. ANALISIS KEAMANAN: Identifikasi potensi penipuan (Scam), Loker Palsu, Phishing, atau pasal kontrak kerja jebakan yang melanggar UU Ketenagakerjaan Indonesia (UU No. 13/2003, UU Cipta Kerja No. 6/2023, PP 35/2021).
+   - Periksa apakah ada penahanan ijazah, penalti ganti rugi yang tidak wajar, permintaan transfer uang, atau indikasi phishing.
 3. Berikan skor_keamanan (0-100). Makin rendah artinya makin berbahaya. 100 = Sangat Aman, 0 = Sangat Berbahaya.
 4. Identifikasi pelanggaran secara spesifik (jenis, penjelasan, pasal hukum).
 
@@ -321,15 +374,22 @@ WAJIB mengembalikan respons dalam format JSON murni.`;
 
     const historyItem = {
       id: `h_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userId: req.user.id,
+      userId: ownerId,
       timestamp: new Date().toISOString(),
       jenis_dokumen: req.file ? "File" : "Teks",
       fileName: req.file ? req.file.originalname : "Analisis Teks Terpadu",
       result: analysisResult
     };
-    await db.collection("history").doc(historyItem.id).set(historyItem);
 
-    res.json(analysisResult);
+    if (db) {
+      try {
+        await db.collection("history").doc(historyItem.id).set(historyItem);
+      } catch (dbErr) {
+        console.warn("Gagal menyimpan riwayat ke Firestore (lanjut tanpa DB):", dbErr);
+      }
+    }
+
+    res.json({ ...analysisResult, historyItem });
   } catch (error: any) {
     console.error("Analysis Error:", error);
     res.status(500).json({
